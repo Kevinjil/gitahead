@@ -557,6 +557,8 @@ Commit Repository::commit(
   const AnnotatedCommit &mergeHead,
   bool *fakeSignature)
 {
+  int error;
+
   // Get the default signature for the repo.
   Signature signature = defaultSignature(fakeSignature);
   if (!signature.isValid())
@@ -582,12 +584,40 @@ Commit Repository::commit(
   if (mergeHead.isValid())
     parents.append(mergeHead.commit());
 
-  // Create the commit.
-  git_oid id;
-  if (git_commit_create(
-        &id, d->repo, "HEAD", signature, signature, 0,
-        message.toUtf8(), tree, parents.size(), parents.data()))
+  // Create the unsigned commit.
+  git_buf content = GIT_BUF_INIT_CONST(nullptr, 0);
+  if (git_commit_create_buffer(
+    &content, d->repo, signature, signature, "UTF-8", message.toUtf8(), tree,
+    parents.size(), parents.data())) {
+    git_buf_dispose(&content);
     return Commit();
+  }
+
+  // Sign the commit.
+  char *gpg = nullptr; // TODO
+
+  // Store the commit.
+  git_oid id;
+  error = git_commit_create_with_signature(&id, d->repo, content.ptr, gpg, NULL);
+  git_buf_dispose(&content);
+  if (error) {
+    return Commit();
+  }
+  git_commit *commit = nullptr;
+  git_commit_lookup(&commit, d->repo, &id);
+
+  // Update HEAD.
+  git_reference *ref = NULL, *ref_new = NULL;
+  git_reference_resolve(&ref, head());
+  error = git_reference_create(
+    &ref_new, d->repo, git_reference_name(ref), &id, 1, git_commit_summary(commit));
+  git_reference_free(ref);
+  git_reference_free(ref_new);
+
+  if (error) {
+    git_commit_free(commit);
+    return Commit();
+  }
 
   // Cleanup merge state.
   switch (state()) {
@@ -602,8 +632,6 @@ Commit Repository::commit(
       break;
   }
 
-  git_commit *commit = nullptr;
-  git_commit_lookup(&commit, d->repo, &id);
   emit d->notifier->referenceUpdated(head());
   return Commit(commit);
 }
