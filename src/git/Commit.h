@@ -51,6 +51,8 @@ public:
   Signature author() const;
   Signature committer() const;
 
+  QString gpgSignature() const;
+
   Diff diff(const Commit &commit = git::Commit(), int contextLines = -1) const;
   Tree tree() const;
   QList<Commit> parents() const;

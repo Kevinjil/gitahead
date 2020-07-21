@@ -133,6 +133,25 @@ Signature Commit::committer() const
   return const_cast<git_signature *>(git_commit_committer(*this));
 }
 
+QString Commit::gpgSignature() const
+{
+  git_repository *repo = git_object_owner(d.data());
+  git_oid *id = const_cast<git_oid*>(git_object_id(d.data()));
+  git_buf signature_buf = GIT_BUF_INIT_CONST(nullptr, 0);
+  git_buf data_buf = GIT_BUF_INIT_CONST(nullptr, 0);
+
+  // Extract the gpg signature.
+  QString result = nullptr;
+  if (!git_commit_extract_signature(&signature_buf, &data_buf, repo, id, NULL))
+    result = QString::fromUtf8(signature_buf.ptr, signature_buf.size);
+
+  // Cleanup allocated memory.
+  git_buf_dispose(&signature_buf);
+  git_buf_dispose(&data_buf);
+
+  return result;
+}
+
 Diff Commit::diff(const git::Commit &commit, int contextLines) const
 {
   Tree old;
